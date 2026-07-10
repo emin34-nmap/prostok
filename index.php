@@ -1,14 +1,12 @@
 <?php
 // ==========================================
-// 1. OTOMATİK KALICI SQLITE VERİTABANI AYARI
-// ==========================================
 
 // ==========================================
-// 1. OTOMATİK KALICI SQLITE VERİTABANI AYARI
+// 1. GÜVENLİ SQLITE VERİTABANI BAĞLANTI AYARI
 // ==========================================
 try {
-    // Render'ın yazma izni verdiği /data/ klasörünü kullanıyoruz
-    $db = new PDO("sqlite:/data/stok.db");
+    // İzin hatasını çözmek için sistemin geçici klasörünü (yazılabilir alan) kullanıyoruz
+    $db = new PDO("sqlite:" . sys_get_temp_dir() . "/stok.db");
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
     die("Veritabanı bağlantı hatası: " . $e->getMessage());
