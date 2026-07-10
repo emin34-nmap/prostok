@@ -2,14 +2,17 @@
 // ==========================================
 // 1. OTOMATİK KALICI SQLITE VERİTABANI AYARI
 // ==========================================
+
+// ==========================================
+// 1. OTOMATİK KALICI SQLITE VERİTABANI AYARI
+// ==========================================
 try {
-    // Verileri Render üzerinde kalıcı klasöre kaydediyoruz
-    $db = new PDO("sqlite:/opt/render/project/src/stok.db");
+    // Render'ın yazma izni verdiği /data/ klasörünü kullanıyoruz
+    $db = new PDO("sqlite:/data/stok.db");
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
     die("Veritabanı bağlantı hatası: " . $e->getMessage());
 }
-
 // ==========================================
 // 2. TABLOLARI OLUŞTURMA (SQLITE UYUMLU)
 // ==========================================
