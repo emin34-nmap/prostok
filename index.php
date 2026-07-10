@@ -1,10 +1,10 @@
 <?php
 // ==========================================
-// 1. OTOMATİK SQLITE VERİTABANI BAĞLANTI AYARI
+// 1. OTOMATİK KALICI SQLITE VERİTABANI AYARI
 // ==========================================
 try {
-    // Render içinde hiçbir ayar yapmadan otomatik dosya bazlı veritabanı oluşturur
-    $db = new PDO("sqlite:/tmp/stok.db");
+    // Verileri Render üzerinde kalıcı klasöre kaydediyoruz
+    $db = new PDO("sqlite:/opt/render/project/src/stok.db");
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
     die("Veritabanı bağlantı hatası: " . $e->getMessage());
@@ -59,12 +59,13 @@ if ($route == 'sorgula') {
     if (!$urun) {
         echo json_encode(['durum' => 'Yok']);
     } else if ($urun['durum'] == 'Satildi') {
+        // Ürün satıldıysa en son kime satıldığını çekiyoruz
         $stmtSatis = $db->prepare("SELECT * FROM satislar WHERE seri_no = ? ORDER BY id DESC LIMIT 1");
         $stmtSatis->execute([$seri]);
         $satis = $stmtSatis->fetch(PDO::FETCH_ASSOC);
-        echo json_encode(['durum' => 'Satildi', 'urun' => array_values($urun), 'satis' => $satis]);
+        echo json_encode(['durum' => 'Satildi', 'urun' => $urun, 'satis' => $satis]);
     } else {
-        echo json_encode(['durum' => $urun['durum'], 'urun' => array_values($urun)]);
+        echo json_encode(['durum' => $urun['durum'], 'urun' => $urun]);
     }
     exit;
 }
@@ -92,14 +93,14 @@ if ($route == 'islem' && $_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($aksiyon == 'alis_kaydet') {
         $stmt = $db->prepare("INSERT OR REPLACE INTO urunler (seri_no, marka, model, kimden_alindi, alis_fiyati, alis_tarihi, durum) VALUES (?, ?, ?, ?, ?, ?, 'Stokta')");
         $stmt->execute([$seri_no, $marka, $model, $val1, $val2, $tarih]);
-        $mesaj = "$marka $model Stoğa Eklendi!";
+        $mesaj = "📦 $marka $model, $val1 İsimli Tedarikçiden Stoğa Eklendi!";
     } elseif ($aksiyon == 'satis_kaydet') {
         $stmt = $db->prepare("INSERT INTO satislar (seri_no, kime_satildi, satis_fiyati, satis_tarihi) VALUES (?, ?, ?, ?)");
         $stmt->execute([$seri_no, $val1, $val2, $tarih]);
         
         $stmtUpdate = $db->prepare("UPDATE urunler SET durum = 'Satildi' WHERE seri_no = ?");
         $stmtUpdate->execute([$seri_no]);
-        $mesaj = "Satış Tamamlandı!";
+        $mesaj = "💸 Ürün $val1 İsimli Müşteriye Satıldı!";
     } elseif ($aksiyon == 'iade_kaydet') {
         $stmt = $db->prepare("INSERT INTO iadeler (seri_no, iade_turu, iade_tarihi) VALUES (?, 'Satis_Iadesi', ?)");
         $stmt->execute([$seri_no, $tarih]);
@@ -109,14 +110,14 @@ if ($route == 'islem' && $_SERVER['REQUEST_METHOD'] == 'POST') {
         
         $stmtUpdate = $db->prepare("UPDATE urunler SET durum = 'Stokta' WHERE seri_no = ?");
         $stmtUpdate->execute([$seri_no]);
-        $mesaj = "Müşteri İadesi Alındı!";
+        $mesaj = "🔄 Müşteri İadesi Alındı, Ürün Tekrar Stokta!";
     } elseif ($aksiyon == 'tedarikci_iade_kaydet') {
         $stmt = $db->prepare("INSERT INTO iadeler (seri_no, iade_turu, iade_tarihi) VALUES (?, 'Alis_Iadesi', ?)");
         $stmt->execute([$seri_no, $tarih]);
         
         $stmtUpdate = $db->prepare("UPDATE urunler SET durum = 'Tedarikciye_Iade' WHERE seri_no = ?");
         $stmtUpdate->execute([$seri_no]);
-        $mesaj = "Tedarikçiye iade edildi.";
+        $mesaj = "↩️ Ürün Tedarikçiye İade Edildi.";
     }
     
     echo json_encode(["status" => "success", "mesaj" => $mesaj]);
@@ -128,7 +129,7 @@ if ($route == 'excel_indir') {
     header('Content-Disposition: attachment; filename=Rapor.csv');
     echo "\xEF\xBB\xBF";
     $output = fopen('php://output', 'w');
-    fputcsv($output, ["Barkod", "Marka", "Model", "Tedarikçi", "Alış Fiyatı", "Alış Tarihi", "Durum"], ";");
+    fputcsv($output, ["Barkod", "Marka", "Model", "Kimden Alındı (Tedarikçi)", "Alış Fiyatı", "Alış Tarihi", "Durum"], ";");
     $stmt = $db->query("SELECT * FROM urunler");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         fputcsv($output, [
@@ -203,7 +204,7 @@ if (isset($_GET['page']) && $_GET['page'] == 'rapor') {
 </head>
 <body>
     <div class="nav-bar shadow-sm d-flex justify-content-between align-items-center">
-        <h4 class="text-primary fw-bold m-0">📦 PRO-STOK v2.6</h4>
+        <h4 class="text-primary fw-bold m-0">📦 PRO-STOK v2.7</h4>
         <a href="index.php?page=rapor" class="btn btn-primary btn-sm fw-bold px-3">📊 Raporlar & Muhasebe</a>
     </div>
     <div class="container">
@@ -289,29 +290,33 @@ if (isset($_GET['page']) && $_GET['page'] == 'rapor') {
                 durumDiv.classList.remove('d-none', 'alert-danger', 'alert-success', 'alert-info', 'alert-warning');
                 formDiv.innerHTML = '';
                 let anlikZaman = defTarihGetir();
+                
                 if(data.durum === 'Yok') {
                     durumDiv.classList.add('alert-danger'); durumDiv.innerText = "🔴 Ürün Kayıtlı Değil!";
                     formDiv.innerHTML = `
                         <div class="row g-2 mb-2"><div class="col-6"><label class="form-label">Marka</label><input type="text" id="inp_marka" class="form-control"></div><div class="col-6"><label class="form-label">Model</label><input type="text" id="inp_model" class="form-control"></div></div>
-                        <div class="mb-2"><label class="form-label">Tedarikçi</label><input type="text" id="inp1" class="form-control"></div>
+                        <div class="mb-2"><label class="form-label">Kimden Alındı (Tedarikçi)</label><input type="text" id="inp1" class="form-control" placeholder="Örn: Ahmet Toptan"></div>
                         <div class="mb-2"><label class="form-label">Alış Fiyatı (TL)</label><input type="number" step="0.01" id="inp2" class="form-control"></div>
                         <div class="mb-3"><label class="form-label">Alış Tarihi</label><input type="datetime-local" id="inp_tarih" class="form-control" value="${anlikZaman}"></div>
                         <button class="btn btn-success w-100 btn-lg fw-bold" onclick="islemYap('alis_kaydet')">STOĞA EKLE</button>`;
                 } else if(data.durum === 'Stokta') {
-                    let mrk = data.urun[1] ? data.urun[1] : '';
-                    let mdl = data.urun[2] ? data.urun[2] : '';
-                    durumDiv.classList.add('alert-success'); durumDiv.innerHTML = `🟢 STOKTA: ${mrk} ${mdl}<br><small>Alış: ${data.urun[4]} TL</small>`;
+                    let mrk = data.urun.marka ? data.urun.marka : '';
+                    let mdl = data.urun.model ? data.urun.model : '';
+                    let kimden = data.urun.kimden_alindi ? data.urun.kimden_alindi : 'Bilinmiyor';
+                    durumDiv.classList.add('alert-success'); durumDiv.innerHTML = `🟢 STOKTA: ${mrk} ${mdl}<br><small>Kimden Alındı: ${kimden} | Alış: ${data.urun.alis_fiyati} TL</small>`;
                     formDiv.innerHTML = `
                         <div class="card p-3 bg-light mb-3 border">
-                            <div class="mb-2"><label class="form-label">Müşteri</label><input type="text" id="inp1" class="form-control"></div>
+                            <div class="mb-2"><label class="form-label">Kime Satıldı (Müşteri)</label><input type="text" id="inp1" class="form-control" placeholder="Örn: Mehmet Yılmaz"></div>
                             <div class="mb-2"><label class="form-label">Satış Fiyatı (TL)</label><input type="number" step="0.01" id="inp2" class="form-control"></div>
                             <div class="mb-3"><label class="form-label">Satış Tarihi</label><input type="datetime-local" id="inp_tarih" class="form-control" value="${anlikZaman}"></div>
                             <button class="btn btn-primary w-100 fw-bold" onclick="islemYap('satis_kaydet')">SATIŞI TAMAMLA</button>
                         </div><button class="btn btn-outline-danger w-100 btn-sm" onclick="islemYap('tedarikci_iade_kaydet')">↩️ Tedarikçiye İade Et</button>`;
                 } else if(data.durum === 'Satildi') {
-                    let mrk = data.urun[1] ? data.urun[1] : '';
-                    let mdl = data.urun[2] ? data.urun[2] : '';
-                    durumDiv.classList.add('alert-info'); durumDiv.innerHTML = `🔵 ÜRÜN SATILMIŞ<br><span class="text-dark fw-bold">${mrk} - ${mdl}</span>`;
+                    let mrk = data.urun.marka ? data.urun.marka : '';
+                    let mdl = data.urun.model ? data.urun.model : '';
+                    let kime = data.satis && data.satis.kime_satildi ? data.satis.kime_satildi : 'Bilinmiyor';
+                    let fiyat = data.satis && data.satis.satis_fiyati ? data.satis.satis_fiyati : '0';
+                    durumDiv.classList.add('alert-info'); durumDiv.innerHTML = `🔵 ÜRÜN SATILMIŞ<br><span class="text-dark fw-bold">${mrk} - ${mdl}</span><br><small>Kime Satıldı: ${kime} | Tutar: ${fiyat} TL</small>`;
                     formDiv.innerHTML = `<button class="btn btn-warning w-100 btn-lg fw-bold" onclick="islemYap('iade_kaydet')">🔄 MÜŞTERİDEN İADE AL</button>`;
                 } else if(data.durum === 'Tedarikciye_Iade') {
                     durumDiv.classList.add('alert-warning'); durumDiv.innerHTML = `⚠️ TEDARİKÇİYE İADE EDİLMİŞ!`;
