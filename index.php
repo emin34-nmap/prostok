@@ -1,45 +1,41 @@
 <?php
 // ==========================================
-// 1. VERİTABANI BAĞLANTI AYARLARI
+// 1. OTOMATİK SQLITE VERİTABANI BAĞLANTI AYARI
 // ==========================================
-$db_host = "sql306.infinityfree.com"; 
-$db_user = "if0_41038971";             
-$db_pass = "22112012meB";            
-$db_name = "if0_41038971_mc"; 
-
 try {
-    $db = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8", $db_user, $db_pass);
+    // Render içinde hiçbir ayar yapmadan otomatik dosya bazlı veritabanı oluşturur
+    $db = new PDO("sqlite:/tmp/stok.db");
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
     die("Veritabanı bağlantı hatası: " . $e->getMessage());
 }
 
 // ==========================================
-// 2. TABLOLARI OLUŞTURMA
+// 2. TABLOLARI OLUŞTURMA (SQLITE UYUMLU)
 // ==========================================
 $db->exec("CREATE TABLE IF NOT EXISTS urunler (
-    seri_no VARCHAR(100) PRIMARY KEY, 
-    marka VARCHAR(100), 
-    model VARCHAR(100), 
-    kimden_alindi VARCHAR(255), 
-    alis_fiyati DECIMAL(10,2), 
-    alis_tarihi DATETIME, 
-    durum VARCHAR(50) DEFAULT 'Stokta'
+    seri_no TEXT PRIMARY KEY, 
+    marka TEXT, 
+    model TEXT, 
+    kimden_alindi TEXT, 
+    alis_fiyati REAL, 
+    alis_tarihi TEXT, 
+    durum TEXT DEFAULT 'Stokta'
 )");
 
 $db->exec("CREATE TABLE IF NOT EXISTS satislar (
-    id INT AUTO_INCREMENT PRIMARY KEY, 
-    seri_no VARCHAR(100), 
-    kime_satildi VARCHAR(255), 
-    satis_fiyati DECIMAL(10,2), 
-    satis_tarihi DATETIME
+    id INTEGER PRIMARY KEY AUTOINCREMENT, 
+    seri_no TEXT, 
+    kime_satildi TEXT, 
+    satis_fiyati REAL, 
+    satis_tarihi TEXT
 )");
 
 $db->exec("CREATE TABLE IF NOT EXISTS iadeler (
-    id INT AUTO_INCREMENT PRIMARY KEY, 
-    seri_no VARCHAR(100), 
-    iade_turu VARCHAR(50), 
-    iade_tarihi DATETIME
+    id INTEGER PRIMARY KEY AUTOINCREMENT, 
+    seri_no TEXT, 
+    iade_turu TEXT, 
+    iade_tarihi TEXT
 )");
 
 // ==========================================
@@ -94,7 +90,7 @@ if ($route == 'islem' && $_SERVER['REQUEST_METHOD'] == 'POST') {
     $mesaj = "";
     
     if ($aksiyon == 'alis_kaydet') {
-        $stmt = $db->prepare("REPLACE INTO urunler (seri_no, marka, model, kimden_alindi, alis_fiyati, alis_tarihi, durum) VALUES (?, ?, ?, ?, ?, ?, 'Stokta')");
+        $stmt = $db->prepare("INSERT OR REPLACE INTO urunler (seri_no, marka, model, kimden_alindi, alis_fiyati, alis_tarihi, durum) VALUES (?, ?, ?, ?, ?, ?, 'Stokta')");
         $stmt->execute([$seri_no, $marka, $model, $val1, $val2, $tarih]);
         $mesaj = "$marka $model Stoğa Eklendi!";
     } elseif ($aksiyon == 'satis_kaydet') {
@@ -174,10 +170,6 @@ if (isset($_GET['page']) && $_GET['page'] == 'rapor') {
     <?php
     exit;
 }
-
-// ==========================================
-// 4. ANA SAYFA (YENİLENMİŞ HATASIZ KAMERA SİSTEMİ)
-// ==========================================
 ?>
 <!DOCTYPE html>
 <html lang="tr">
@@ -190,8 +182,6 @@ if (isset($_GET['page']) && $_GET['page'] == 'rapor') {
     <style>
         body { background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         .card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        
-        /* Kameranın ortalanması ve taşmaması için kritik CSS güncellemesi */
         #reader { 
             width: 100% !important; 
             max-width: 450px; 
@@ -213,12 +203,11 @@ if (isset($_GET['page']) && $_GET['page'] == 'rapor') {
 </head>
 <body>
     <div class="nav-bar shadow-sm d-flex justify-content-between align-items-center">
-        <h4 class="text-primary fw-bold m-0">📦 PRO-STOK v2.3</h4>
+        <h4 class="text-primary fw-bold m-0">📦 PRO-STOK v2.6</h4>
         <a href="index.php?page=rapor" class="btn btn-primary btn-sm fw-bold px-3">📊 Raporlar & Muhasebe</a>
     </div>
     <div class="container">
         <div class="card p-3 mb-3 text-center">
-            <!-- Kamera alanı görünürlüğü JS ile doğrudan yönetilecek -->
             <div id="kamera_kapsayici" style="display: none; margin-bottom: 15px;">
                 <div id="reader"></div>
             </div>
@@ -257,27 +246,19 @@ if (isset($_GET['page']) && $_GET['page'] == 'rapor') {
         }
 
         function kamerayiBaslat() {
-            // Güvenlik protokolü uyarısı
-            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-                alert("🚨 ÖNEMLİ: Kamera sistemi tarayıcı kuralları gereği sadece HTTPS yüklü sitelerde açılır. Lütfen sitenizin SSL sertifikasını aktif edin.");
-            }
-
             document.getElementById('kamera_kapsayici').style.display = "block";
             document.getElementById('btn_ac').classList.add('d-none');
             document.getElementById('btn_kapat').classList.remove('d-none');
             
-            if(html5QrcodeScanner !== null) {
-                html5QrcodeScanner.clear();
-            }
+            if(html5QrcodeScanner !== null) { html5QrcodeScanner.clear(); }
             
-            // Sıfırdan temiz bir nesne oluşturup DOM'a bağlıyoruz
             html5QrcodeScanner = new Html5Qrcode("reader");
             html5QrcodeScanner.start(
                 { facingMode: "environment" }, 
                 { fps: 15, qrbox: function(width, height) { return { width: 250, height: 200 }; } }, 
                 onScanSuccess
             ).catch(err => {
-                alert("Kamera açma hatası: Tarayıcı iznini kontrol edin veya sitenizin HTTPS olduğundan emin olun.");
+                alert("Kamera açma hatası: Tarayıcı iznini kontrol edin.");
                 KameraArayuzunuSifirla();
             });
         }
@@ -287,12 +268,8 @@ if (isset($_GET['page']) && $_GET['page'] == 'rapor') {
                 html5QrcodeScanner.stop().then(() => { 
                     html5QrcodeScanner.clear(); 
                     KameraArayuzunuSifirla(); 
-                }).catch(err => {
-                    KameraArayuzunuSifirla();
-                });
-            } else { 
-                KameraArayuzunuSifirla(); 
-            }
+                }).catch(err => { KameraArayuzunuSifirla(); });
+            } else { KameraArayuzunuSifirla(); }
         }
 
         function KameraArayuzunuSifirla() {
